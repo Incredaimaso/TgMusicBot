@@ -14,5 +14,6 @@ commands:
   start:
     - "tgmusic"
 
- env:
-   - "ENVIRONMENT=production"
+env:
+  - "ENVIRONMENT=production"
+
