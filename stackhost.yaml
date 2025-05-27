@@ -7,7 +7,9 @@ python_version: "3.13"
 
 commands:
   build:
-    - "pip install uv uv pip install -e ."
+    - "pip install uv"
+    - "uv pip install -e . --system"
+
   package:
     - "nano ffmpeg git python3-pip 
   start:
