@@ -1,19 +1,17 @@
 user:
-  name: Incredaimaso
-  github: Incredaimaso
+  name: ishikki
+  github: ishikki-akabane
 
 language: "python"
 python_version: "3.13"
 
 commands:
   build:
-    - "pip install uv"
-    - "uv pip install -e . --system"
-    - "which tgmusic"
-    
+    - "pip install uv uv pip install -e ."
+  package:
+    - "nano ffmpeg git python3-pip 
   start:
     - "tgmusic"
 
 env:
   - "ENVIRONMENT=production"
-
