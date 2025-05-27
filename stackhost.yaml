@@ -10,9 +10,9 @@ commands:
     - "pip install uv"
     - "uv pip install -e . --system"
     - "which tgmusic"
+    
+  start:
+    - "tgmusic"
 
-start:
-  - "tgmusic"
-
-env:
-  - "ENVIRONMENT=production"
+ env:
+   - "ENVIRONMENT=production"
