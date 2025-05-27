@@ -11,7 +11,7 @@ commands:
     - "uv pip install -e . --system"
 
   package:
-    - "nano ffmpeg git python3-pip 
+    - "nano ffmpeg git python3-pip"
   start:
     - "tgmusic"
 
