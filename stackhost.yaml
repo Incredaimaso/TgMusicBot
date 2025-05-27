@@ -7,11 +7,13 @@ python_version: "3.13"
 
 commands:
   build:
-    - "pip install -e ."
-  package:
-    - "nano inxi"
-  start:
-    - "tgmusic"
+    - "pip install uv"
+    - "uv pip install -e . --system"
+    - "which tgmusic"
+
+start:
+  - "tgmusic"
+
 
 env:
   - "ENVIRONMENT=production"
