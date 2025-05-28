@@ -10,10 +10,12 @@ from pathlib import Path
 from typing import Any, Optional, Dict, Union
 
 from py_yt import Playlist, VideosSearch
+from pytdbot import types
 
 from src.helpers import MusicTrack, PlatformTracks, TrackInfo
 from src.logger import LOGGER
 from ._downloader import MusicService
+from ._telegram import Telegram
 from ._httpx import HttpxClient
 from ..config import API_URL, API_KEY, DOWNLOADS_DIR, PROXY
 
@@ -68,8 +70,8 @@ class YouTubeUtils:
     def _extract_video_id(url: str) -> Optional[str]:
         """Extract video ID from various YouTube URL formats."""
         for pattern in (
-                YouTubeUtils.YOUTUBE_VIDEO_PATTERN,
-                YouTubeUtils.YOUTUBE_SHORTS_PATTERN,
+            YouTubeUtils.YOUTUBE_VIDEO_PATTERN,
+            YouTubeUtils.YOUTUBE_SHORTS_PATTERN,
         ):
             if match := pattern.match(url):
                 return match.group(1)
@@ -193,6 +195,7 @@ class YouTubeUtils:
         except Exception as e:
             LOGGER.warning("Error accessing cookie directory: %s", e)
             return None
+
     @staticmethod
     async def fetch_oembed_data(url: str) -> Optional[dict[str, Any]]:
         client = HttpxClient()
@@ -217,12 +220,38 @@ class YouTubeUtils:
         return None
 
     @staticmethod
-    async def download_with_api(video_id: str) -> Optional[Path]:
+    async def download_with_api(video_id: str, reply: Union[None, types.Message]) -> Optional[Path]:
         """
         Download audio using the API.
         """
-        dl = await HttpxClient().download_file(f"{API_URL}/yt?id={video_id}")
-        return dl.file_path if dl.success else None
+        from src import client
+        if public_url := await HttpxClient().make_request(f"{API_URL}/yt?id={video_id}", max_retries=1):
+            dl_url = public_url.get("results")
+            if not dl_url:
+                LOGGER.error("Response from API is empty")
+                return None
+
+            if not re.fullmatch(r"https:\/\/t\.me\/([a-zA-Z0-9_]{5,})\/(\d+)", dl_url):
+                dl = await HttpxClient().download_file(f"{API_URL}/stream?uuid={dl_url}")
+                return dl.file_path if dl.success else None
+
+            info = await client.getMessageLinkInfo(dl_url)
+            if isinstance(info, types.Error) or info.message is None:
+                LOGGER.error(f"❌ Could not resolve message from link: {dl_url}; {info}")
+                return None
+
+            msg = await client.getMessage(info.chat_id, info.message.id)
+            if isinstance(msg, types.Error):
+                LOGGER.error(f"❌ Failed to fetch message with ID {info.message.id}; {msg}")
+                return None
+
+            file, _ = await Telegram(msg).download_msg(reply)
+            if isinstance(file, types.Error):
+                LOGGER.error(f"❌ Failed to download message with ID {info.message.id}; {file}")
+                return None
+
+            return file.path
+        return None
 
     @staticmethod
     async def download_with_yt_dlp(video_id: str, video: bool) -> Optional[str]:
@@ -233,17 +262,23 @@ class YouTubeUtils:
             "--no-warnings",
             "--quiet",
             "--geo-bypass",
-            "--retries", "2",
+            "--retries",
+            "2",
             "--continue",
             "--no-part",
-            "-o", output_template,
+            "-o",
+            output_template,
         ]
 
         if video:
-            cmd.extend([
-                "-f", "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio[ext=m4a])",
-                "--merge-output-format", "mp4",
-            ])
+            cmd.extend(
+                [
+                    "-f",
+                    "(bestvideo[height<=?720][width<=?1280][ext=mp4])+(bestaudio[ext=m4a])",
+                    "--merge-output-format",
+                    "mp4",
+                ]
+            )
         else:
             cmd.extend(["-f", "bestaudio[ext=m4a]/bestaudio/best"])
 
@@ -334,7 +369,11 @@ class YouTubeData(MusicService):
             return None
 
         try:
-            url = (self.query if self.query.startswith(("http://", "https://")) else f"https://youtube.com/watch?v={self.query}")
+            url = (
+                self.query
+                if self.query.startswith(("http://", "https://"))
+                else f"https://youtube.com/watch?v={self.query}"
+            )
             data = await self._fetch_data(url)
             if not data or not data.get("results"):
                 return None
@@ -344,23 +383,13 @@ class YouTubeData(MusicService):
             LOGGER.error(f"Error fetching track {self.query}: {e!r}")
             return None
 
-    async def download_track(self, track: TrackInfo, video: bool = False) -> Union[Path, str, None]:
-        """
-        Download a YouTube track.
-
-        Args:
-            track: TrackInfo object containing track details
-            video: Whether to download video (True) or audio only (False)
-
-        Returns:
-            str: Path to downloaded file or None if failed
-        """
+    async def download_track(self, track: TrackInfo, video: bool = False, msg: Union[None, types.Message]= None) -> Union[Path, str, None]:
         if not track:
             return None
 
         try:
             if not video and API_URL and API_KEY:
-                if file_path := await YouTubeUtils.download_with_api(track.tc):
+                if file_path := await YouTubeUtils.download_with_api(track.tc, msg):
                     return file_path
 
             return await YouTubeUtils.download_with_yt_dlp(track.tc, video)
@@ -413,7 +442,6 @@ class YouTubeData(MusicService):
         except Exception as e:
             LOGGER.error(f"Error searching video: {e!r}")
             return None
-
 
     @staticmethod
     async def _get_playlist_data(url: str) -> Optional[Dict[str, Any]]:

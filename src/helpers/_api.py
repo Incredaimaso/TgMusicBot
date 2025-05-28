@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from typing import Optional, Union
 
+from pytdbot import types
+
 from src import config
 from src.logger import LOGGER
 from ._dataclass import MusicTrack, PlatformTracks, TrackInfo
@@ -19,16 +21,16 @@ class ApiData(MusicService):
 
     # URL patterns for supported music services
     URL_PATTERNS = {
-        "apple_music": re.compile(
-            r"^(https?://)?(music\.apple\.com/([a-z]{2}/)?(album|playlist|song)/[a-zA-Z0-9\-_]+/[0-9]+)(\?.*)?$",
-            re.IGNORECASE,
-        ),
+        # "apple_music": re.compile(
+        #     r"^(https?://)?(music\.apple\.com/([a-z]{2}/)?(album|playlist|song)/[a-zA-Z0-9\-_]+/[0-9]+)(\?.*)?$",
+        #     re.IGNORECASE,
+        # ),
         "spotify": re.compile(
             r"^(https?://)?(open\.spotify\.com/(track|playlist|album|artist)/[a-zA-Z0-9]+)(\?.*)?$",
             re.IGNORECASE,
         ),
         "soundcloud": re.compile(
-            r"^(https?://)?(soundcloud\.com/[a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_]+)(\?.*)?$",
+            r"^(https?://)?(www\.)?soundcloud\.com/[a-zA-Z0-9_-]+(/(sets)?/[a-zA-Z0-9_-]+)?(\?.*)?$",
             re.IGNORECASE,
         ),
     }
@@ -141,19 +143,7 @@ class ApiData(MusicService):
         data = await self._make_api_request("get_track", {"id": self.query})
         return TrackInfo(**data) if data else None
 
-    async def download_track(
-        self, track: TrackInfo, video: bool = False
-    ) -> Optional[Union[str, Path]]:
-        """
-        Download a track based on its platform.
-
-        Args:
-            track: TrackInfo object containing track details
-            video: Whether to download video (currently unused for API tracks)
-
-        Returns:
-            Path/str: Path to a downloaded file or None if failed
-        """
+    async def download_track(self, track: TrackInfo, video: bool = False, msg: Union[None, types.Message]= None) -> Optional[Union[str, Path]]:
         if not track:
             return None
 
