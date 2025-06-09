@@ -107,7 +107,7 @@ class Call:
         if isinstance(client, types.Error):
             return client
 
-        ub = client.mtproto_client
+        ub: PyroClient = client.mtproto_client
         if ub is None or not hasattr(ub, "me") or ub.me is None:
             return types.Error(
                 code=500,
@@ -115,6 +115,11 @@ class Call:
                 "Please report this issue.",
             )
 
+        if ub.me.is_bot:
+            return types.Error(
+                code=500,
+                message="Client session is a bot account. " "Please report this issue.",
+            )
         return ub
 
     async def start_client(
@@ -153,7 +158,6 @@ class Call:
             @_call.on_update()
             async def general_handler(_, update: Update, _call=_call):
                 try:
-                    # LOGGER.debug("Received update from call %s: %s", _call, update)
                     if isinstance(update, stream.StreamEnded):
                         await self.play_next(update.chat_id)
                     elif isinstance(update, UpdatedGroupCallParticipant):
@@ -304,7 +308,7 @@ class Call:
                 return
 
             # Download song if isn't downloaded
-            file_path = song.file_path or await self.song_download(song, reply)
+            file_path = song.file_path or await self.song_download(song)
             if not file_path:
                 await reply.edit_text(
                     "⚠️ Failed to download the song.\n" "Skipping to next track..."
@@ -374,7 +378,7 @@ class Call:
             )
 
     @staticmethod
-    async def song_download(song: CachedTrack, msg: Union[types.Message, None]) -> Optional[Path]:
+    async def song_download(song: CachedTrack) -> Optional[Path]:
         platform_handlers = {
             "youtube": YouTubeData(song.track_id),
             "jiosaavn": JiosaavnData(song.url),
@@ -392,7 +396,7 @@ class Call:
 
         try:
             track = await handler.get_track()
-            return await handler.download_track(track, song.is_video, msg) if track else None
+            return await handler.download_track(track, song.is_video) if track else None
         except Exception as e:
             LOGGER.error(
                 "Download failed for %s: %s", song.track_id, str(e), exc_info=True
@@ -465,7 +469,12 @@ class Call:
 
             try:
                 await client.leave_call(chat_id)
-            except (exceptions.NotInCallError, errors.GroupCallInvalid):
+            except (
+                exceptions.NotInCallError,
+                errors.GroupCallInvalid,
+                exceptions.NoActiveGroupCall,
+                ConnectionNotFound,
+            ):
                 pass  # Already not in call
 
             return types.Ok()
@@ -591,6 +600,8 @@ class Call:
 
             await client.mute(chat_id)
             return types.Ok()
+        except (exceptions.NotInCallError, ConnectionNotFound):
+            return types.Error(code=400, message="My Assistant is not in a call")
         except Exception as e:
             LOGGER.error("Mute failed for chat %s: %s", chat_id, str(e), exc_info=True)
             return types.Error(code=500, message=f"Mute operation failed: {str(e)}")
@@ -611,6 +622,8 @@ class Call:
 
             await client.unmute(chat_id)
             return types.Ok()
+        except (exceptions.NotInCallError, ConnectionNotFound):
+            return types.Error(code=400, message="My Assistant is not in a call")
         except Exception as e:
             LOGGER.error(
                 "Unmute failed for chat %s: %s", chat_id, str(e), exc_info=True
@@ -633,6 +646,8 @@ class Call:
 
             await client.resume(chat_id)
             return types.Ok()
+        except (exceptions.NotInCallError, ConnectionNotFound):
+            return types.Error(code=400, message="My Assistant is not in a call")
         except Exception as e:
             LOGGER.error(
                 "Resume failed for chat %s: %s", chat_id, str(e), exc_info=True

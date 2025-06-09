@@ -6,6 +6,7 @@
 #  Configure environment variables using the .env file instead
 
 from os import getenv
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -47,12 +48,12 @@ SESSION_STRINGS = [s for s in SESSION_STRINGS if s]
 OWNER_ID: int = get_env_int("OWNER_ID", 5938660179)
 LOGGER_ID: int = get_env_int("LOGGER_ID", 0)
 MONGO_URI: Optional[str] = getenv("MONGO_URI")
-API_URL: Optional[str] = getenv("API_URL")
+API_URL: Optional[str] = getenv("API_URL", "https://tgmusic.fallenapi.fun")
 API_KEY: Optional[str] = getenv("API_KEY")
 PROXY: Optional[str] = getenv("PROXY")
 
 DEFAULT_SERVICE: str = getenv("DEFAULT_SERVICE", "youtube").lower()
-DOWNLOADS_DIR: str = getenv("DOWNLOADS_DIR", "database/music")
+DOWNLOADS_DIR: Path = Path(getenv("DOWNLOADS_DIR", "database/music"))
 SUPPORT_GROUP: str = getenv("SUPPORT_GROUP", "https://t.me/GuardxSupport")
 SUPPORT_CHANNEL: str = getenv("SUPPORT_CHANNEL", "https://t.me/FallenProjects")
 

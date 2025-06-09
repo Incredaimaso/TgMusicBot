@@ -96,7 +96,11 @@ async def chat_member(client: Client, update: types.UpdateChatMember) -> None:
 
     await db.add_chat(chat_id)
     new_member = update.new_chat_member.member_id
-    user_id = new_member.user_id if isinstance(new_member, types.MessageSenderUser) else new_member.chat_id
+    user_id = (
+        new_member.user_id
+        if isinstance(new_member, types.MessageSenderUser)
+        else new_member.chat_id
+    )
     old_status = update.old_chat_member.status["@type"]
     new_status = update.new_chat_member.status["@type"]
 
@@ -128,6 +132,8 @@ async def _handle_status_changes(
     ):
         await _handle_leave_or_kick(chat_id, user_id)
     elif new_status == "chatMemberStatusBanned":
+        if user_id == client.me.id:
+            await call.end(chat_id)
         await _handle_ban(chat_id, user_id)
     elif (
         old_status == "chatMemberStatusBanned" and new_status == "chatMemberStatusLeft"
