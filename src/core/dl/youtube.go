@@ -238,7 +238,7 @@ func (y *youTubeData) fallbackFormatSelector(video bool) string {
 }
 
 func isYtdlpFormatUnavailable(errorOutput string) bool {
-	return strings.Contains(errorOutput, "Requested format is not available")
+	return strings.Contains(strings.ToLower(errorOutput), "requested format is not available")
 }
 
 // downloadWithYtDlp downloads media from YouTube using the yt-dlp command-line tool.
