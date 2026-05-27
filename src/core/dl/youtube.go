@@ -175,7 +175,7 @@ func (y *youTubeData) downloadTrack(info utils.TrackInfo, video bool) (string, e
 }
 
 // buildYtdlpParams constructs the command-line parameters for yt-dlp to download media.
-func (y *youTubeData) buildYtdlpParams(videoID string, video bool) []string {
+func (y *youTubeData) buildYtdlpParams(videoID string, video bool, formatSelector string) []string {
 	outputTemplate := filepath.Join(config.Conf.DownloadsDir, "%(id)s.%(ext)s")
 
 	params := []string{
@@ -199,11 +199,14 @@ func (y *youTubeData) buildYtdlpParams(videoID string, video bool) []string {
 		"-o", outputTemplate,
 	}
 
+	if formatSelector == "" {
+		formatSelector = y.defaultFormatSelector(video)
+	}
+
 	if video {
-		formatSelector := "bestvideo[height<=720]+bestaudio/best[height<=720]"
 		params = append(params, "-f", formatSelector, "--merge-output-format", "mp4")
 	} else {
-		params = append(params, "-f", "bestaudio[ext=m4a]/bestaudio")
+		params = append(params, "-f", formatSelector)
 	}
 
 	if cookieFile := y.getCookieFile(); cookieFile != "" {
@@ -218,43 +221,82 @@ func (y *youTubeData) buildYtdlpParams(videoID string, video bool) []string {
 	return params
 }
 
+func (y *youTubeData) defaultFormatSelector(video bool) string {
+	if video {
+		return "bestvideo[height<=720]+bestaudio/best[height<=720]"
+	}
+
+	return "bestaudio[ext=m4a]/bestaudio"
+}
+
+func (y *youTubeData) fallbackFormatSelector(video bool) string {
+	if video {
+		return "bestvideo+bestaudio/best"
+	}
+
+	return "bestaudio/best"
+}
+
+func isYtdlpFormatUnavailable(errorOutput string) bool {
+	return strings.Contains(errorOutput, "Requested format is not available")
+}
+
 // downloadWithYtDlp downloads media from YouTube using the yt-dlp command-line tool.
 func (y *youTubeData) downloadWithYtDlp(videoID string, video bool) (string, error) {
 	if videoID == "" {
 		return "", errors.New("videoID is empty")
 	}
 
-	ytdlpParams := y.buildYtdlpParams(videoID, video)
+	ytdlpParams := y.buildYtdlpParams(videoID, video, "")
 
+	filePath, errorOutput, err := y.runYtdlp(videoID, ytdlpParams)
+	if err == nil {
+		return filePath, nil
+	}
+
+	if isYtdlpFormatUnavailable(errorOutput) {
+		fallbackParams := y.buildYtdlpParams(videoID, video, y.fallbackFormatSelector(video))
+		fallbackPath, _, fallbackErr := y.runYtdlp(videoID, fallbackParams)
+		if fallbackErr == nil {
+			return fallbackPath, nil
+		}
+
+		return "", fallbackErr
+	}
+
+	return "", err
+}
+
+func (y *youTubeData) runYtdlp(videoID string, ytdlpParams []string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, ytdlpParams[0], ytdlpParams[1:]...)
 
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput()
+	outputStr := strings.TrimSpace(string(output))
 	if err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			stderr := string(exitErr.Stderr)
-			return "", fmt.Errorf("yt-dlp failed with exit code %d: %s", exitErr.ExitCode(), stderr)
-		}
-
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
+			return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
 		}
 
-		return "", fmt.Errorf("an unexpected error occurred while downloading %s: %w", videoID, err)
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			return "", outputStr, fmt.Errorf("yt-dlp failed with exit code %d: %s", exitErr.ExitCode(), outputStr)
+		}
+
+		return "", outputStr, fmt.Errorf("an unexpected error occurred while downloading %s: %w", videoID, err)
 	}
 
-	downloadedPathStr := strings.TrimSpace(string(output))
+	downloadedPathStr := outputStr
 	if downloadedPathStr == "" {
-		return "", fmt.Errorf("no output path was returned for %s", videoID)
+		return "", "", fmt.Errorf("no output path was returned for %s", videoID)
 	}
 
 	if _, err := os.Stat(downloadedPathStr); os.IsNotExist(err) {
-		return "", fmt.Errorf("the file was not found at the reported path: %s", downloadedPathStr)
+		return "", "", fmt.Errorf("the file was not found at the reported path: %s", downloadedPathStr)
 	}
 
-	return downloadedPathStr, nil
+	return downloadedPathStr, "", nil
 }
 
 // getCookieFile retrieves the path to a cookie file from the configured list.
