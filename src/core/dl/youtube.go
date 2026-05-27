@@ -223,18 +223,18 @@ func (y *youTubeData) buildYtdlpParams(videoID string, video bool, formatSelecto
 
 func (y *youTubeData) defaultFormatSelector(video bool) string {
 	if video {
-		return "bestvideo[height<=720]+bestaudio/best[height<=720]"
+		return "bestvideo*+bestaudio/best"
 	}
 
-	return "bestaudio[ext=m4a]/bestaudio"
+	return "bestaudio/best"
 }
 
 func (y *youTubeData) fallbackFormatSelector(video bool) string {
 	if video {
-		return "bestvideo+bestaudio/best"
+		return "best"
 	}
 
-	return "bestaudio/best"
+	return "b"
 }
 
 func isYtdlpFormatUnavailable(errorOutput string) bool {
