@@ -238,7 +238,13 @@ func (y *youTubeData) fallbackFormatSelector(video bool) string {
 }
 
 func isYtdlpFormatUnavailable(errorOutput string) bool {
-	return strings.Contains(strings.ToLower(errorOutput), "requested format is not available")
+	normalized := strings.ToLower(errorOutput)
+	if strings.Contains(normalized, "requested format is not available") ||
+		strings.Contains(normalized, "requested formats are not available") {
+		return true
+	}
+
+	return strings.Contains(normalized, "format") && strings.Contains(normalized, "not available")
 }
 
 // downloadWithYtDlp downloads media from YouTube using the yt-dlp command-line tool.
@@ -261,7 +267,7 @@ func (y *youTubeData) downloadWithYtDlp(videoID string, video bool) (string, err
 			return fallbackPath, nil
 		}
 
-		return "", fallbackErr
+		return "", fmt.Errorf("yt-dlp failed with default format: %w; fallback failed: %v", err, fallbackErr)
 	}
 
 	return "", err
@@ -276,12 +282,16 @@ func (y *youTubeData) runYtdlp(videoID string, ytdlpParams []string) (string, st
 	output, err := cmd.CombinedOutput()
 	outputStr := strings.TrimSpace(string(output))
 	if err != nil {
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
+			}
+
+			return "", outputStr, fmt.Errorf("yt-dlp failed with exit code %d: %s", exitErr.ExitCode(), outputStr)
 		}
 
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return "", outputStr, fmt.Errorf("yt-dlp failed with exit code %d: %s", exitErr.ExitCode(), outputStr)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
 		}
 
 		return "", outputStr, fmt.Errorf("an unexpected error occurred while downloading %s: %w", videoID, err)
