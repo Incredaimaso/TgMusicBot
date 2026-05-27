@@ -282,15 +282,16 @@ func (y *youTubeData) runYtdlp(videoID string, ytdlpParams []string) (string, st
 	output, err := cmd.CombinedOutput()
 	outputStr := strings.TrimSpace(string(output))
 	if err != nil {
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			if timedOut {
 				return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
 			}
 
 			return "", outputStr, fmt.Errorf("yt-dlp failed with exit code %d: %s", exitErr.ExitCode(), outputStr)
 		}
 
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if timedOut {
 			return "", outputStr, fmt.Errorf("yt-dlp timed out for video ID: %s", videoID)
 		}
 
